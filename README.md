@@ -7,24 +7,104 @@ This guide provides complete usage instructions and examples for the certificate
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Basic Script Usage](#basic-script-usage)
-3. [Advanced Script Usage](#advanced-script-usage)
-4. [Interactive Mode Examples](#interactive-mode-examples)
-5. [Command-Line Examples](#command-line-examples)
-6. [Batch Processing Examples](#batch-processing-examples)
-7. [Troubleshooting](#troubleshooting)
+2. [Root CA Generation](#root-ca-generation)
+3. [Basic Script Usage](#basic-script-usage)
+4. [Advanced Script Usage](#advanced-script-usage)
+5. [Interactive Mode Examples](#interactive-mode-examples)
+6. [Command-Line Examples](#command-line-examples)
+7. [Batch Processing Examples](#batch-processing-examples)
+8. [Troubleshooting](#troubleshooting)
 
 ## Quick Start
 
 ### Prerequisites
 - OpenSSL installed on your system
-- CA certificate and private key files
+- CA certificate and private key files (or let the script generate them for you!)
 - Bash shell (Linux, macOS, or WSL on Windows)
 
 ### Make Scripts Executable
 ```bash
 chmod +x generate-certificate-v1.sh.sh
 ```
+
+## Root CA Generation
+
+The script now includes **automatic root CA generation** capability, making it a complete one-stop solution for certificate management. You no longer need existing CA files to get started!
+
+### Automatic CA Generation
+
+When you run the script without existing CA files, it will automatically detect this and offer to generate a root CA certificate and key for you:
+
+```bash
+./generate-certificate-v1.sh
+```
+
+**Example flow:**
+```
+[INFO] === Certificate Generation Script v2.0 ===
+
+Enter path to CA certificate file: ca.crt
+[WARNING] CA certificate file not found: ca.crt
+Would you like to generate a root CA certificate? (y/n): y
+[INFO] === Root CA Generation ===
+
+Enter CA Organization (O): My Company
+Enter CA Organizational Unit (OU): IT Department
+Enter CA City/Locality (L): New York
+Enter CA State/Province (ST): NY
+Enter CA Country Code (C) - 2 letters: US
+[INFO] Generating root CA private key (4096 bits)...
+[INFO] Generating root CA certificate...
+[SUCCESS] Root CA generated successfully!
+
+CA certificate details:
+    Subject: C=US, ST=NY, L=New York, O=My Company, OU=IT Department, CN=Root CA
+    Issuer: C=US, ST=NY, L=New York, O=My Company, OU=IT Department, CN=Root CA
+    Not Before: Jan 15 10:30:00 2024 GMT
+    Not After: Jan 15 10:30:00 2034 GMT
+
+CA files created:
+  CA Private Key: ca.key
+  CA Certificate: ca.crt
+
+[SUCCESS] Root CA generation completed successfully!
+```
+
+### Force CA Generation Mode
+
+Use the `--generate-ca` flag to force CA generation mode:
+
+```bash
+./generate-certificate-v1.sh --generate-ca --cn "My Root CA" --org "My Company"
+```
+
+### CA Generation Options
+
+- `--generate-ca` - Force CA generation mode
+- `--ca-days DAYS` - CA validity period (default: 3650 days = 10 years)
+- `--ca-key-size SIZE` - CA key size (default: 4096 bits)
+
+**Examples:**
+```bash
+# Generate CA with custom validity period
+./generate-certificate-v1.sh --generate-ca --ca-days 7300 --cn "Long-lived CA"
+
+# Generate CA with custom key size
+./generate-certificate-v1.sh --generate-ca --ca-key-size 8192 --cn "High-security CA"
+
+# Complete flow: Generate CA then create certificate
+./generate-certificate-v1.sh --generate-ca --cn "My Root CA" --org "My Company" --cn "example.com" --san "example.com,*.example.com"
+```
+
+### CA Security Features
+
+The generated root CA includes:
+- **4096-bit RSA key** (configurable)
+- **10-year validity** (configurable)
+- **Proper CA constraints** (CA:TRUE)
+- **Key usage** (keyCertSign, cRLSign)
+- **Secure file permissions** (600 for key, 644 for cert)
+- **Self-signed certificate** (no external dependencies)
 
 ## Basic Script Usage
 
@@ -183,6 +263,32 @@ Add another SAN? (y/n): n
   --key-file secure.key \
   --cert-file secure.crt \
   --san "secure.example.com,*.secure.example.com"
+```
+
+### Example 4: Generate Root CA Only
+```bash
+./generate-certificate-v1.sh \
+  --generate-ca \
+  --cn "My Root CA" \
+  --org "My Company" \
+  --ou "IT Department" \
+  --city "New York" \
+  --state "NY" \
+  --country "US" \
+  --ca-days 3650 \
+  --ca-key-size 4096
+```
+
+### Example 5: Complete One-Stop Solution
+```bash
+# Generate CA and certificate in one command
+./generate-certificate-v1.sh \
+  --generate-ca \
+  --cn "My Root CA" \
+  --org "My Company" \
+  --country "US" \
+  --cn "example.com" \
+  --san "example.com,*.example.com,www.example.com"
 ```
 
 ## Batch Processing Examples
