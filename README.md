@@ -24,7 +24,7 @@ This guide provides complete usage instructions and examples for the certificate
 
 ### Make Scripts Executable
 ```bash
-chmod +x generate-certificate-v1.sh.sh
+chmod +x generate-certificate-v2.sh
 ```
 
 ## Root CA Generation
@@ -36,7 +36,7 @@ The script now includes **automatic root CA generation** capability, making it a
 When you run the script without existing CA files, it will automatically detect this and offer to generate a root CA certificate and key for you:
 
 ```bash
-./generate-certificate-v1.sh
+./generate-certificate-v2.sh
 ```
 
 **Example flow:**
@@ -75,7 +75,7 @@ CA files created:
 Use the `--generate-ca` flag to force CA generation mode:
 
 ```bash
-./generate-certificate-v1.sh --generate-ca --cn "My Root CA" --org "My Company"
+./generate-certificate-v2.sh --generate-ca --cn "My Root CA" --org "My Company"
 ```
 
 ### CA Generation Options
@@ -87,13 +87,13 @@ Use the `--generate-ca` flag to force CA generation mode:
 **Examples:**
 ```bash
 # Generate CA with custom validity period
-./generate-certificate-v1.sh --generate-ca --ca-days 7300 --cn "Long-lived CA"
+./generate-certificate-v2.sh --generate-ca --ca-days 7300 --cn "Long-lived CA"
 
 # Generate CA with custom key size
-./generate-certificate-v1.sh --generate-ca --ca-key-size 8192 --cn "High-security CA"
+./generate-certificate-v2.sh --generate-ca --ca-key-size 8192 --cn "High-security CA"
 
 # Complete flow: Generate CA then create certificate
-./generate-certificate-v1.sh --generate-ca --cn "My Root CA" --org "My Company" --cn "example.com" --san "example.com,*.example.com"
+./generate-certificate-v2.sh --generate-ca --cn "My Root CA" --org "My Company" --cn "example.com" --san "example.com,*.example.com"
 ```
 
 ### CA Security Features
@@ -110,7 +110,7 @@ The generated root CA includes:
 
 ### Interactive Mode (Recommended for beginners)
 ```bash
-./generate-certificate-v1.sh.sh
+./generate-certificate-v2.sh
 ```
 
 **What you'll be asked:**
@@ -144,29 +144,29 @@ Enter output certificate filename (default: certificate.crt):
 
 ### Interactive Mode
 ```bash
-./generate-certificate-v1.sh
+./generate-certificate-v2.sh
 ```
 
 ### Command-Line Mode
 ```bash
-./generate-certificate-v1.sh [OPTIONS]
+./generate-certificate-v2.sh [OPTIONS]
 ```
 
 ### Show Help
 ```bash
-./generate-certificate-v1.sh --help
+./generate-certificate-v2.sh --help
 ```
 
 ### Show Version
 ```bash
-./generate-certificate-v1.sh --version
+./generate-certificate-v2.sh --version
 ```
 
 ## Interactive Mode Examples
 
 ### Example 1: Basic Certificate
 ```bash
-./generate-certificate-v1.sh
+./generate-certificate-v2.sh
 ```
 
 **Input:**
@@ -207,7 +207,7 @@ Files created:
 
 ### Example 2: Multi-Domain Certificate
 ```bash
-./generate-certificate-v1.sh
+./generate-certificate-v2.sh
 ```
 
 **SAN Input:**
@@ -228,7 +228,7 @@ Add another SAN? (y/n): n
 
 ### Example 1: Basic Certificate
 ```bash
-./generate-certificate-v1.sh \
+./generate-certificate-v2.sh \
   --ca-cert /etc/ssl/ca.crt \
   --ca-key /etc/ssl/ca.key \
   --cn example.com \
@@ -241,7 +241,7 @@ Add another SAN? (y/n): n
 
 ### Example 2: Certificate with SANs
 ```bash
-./generate-certificate-v1.sh \
+./generate-certificate-v2.sh \
   --ca-cert /etc/ssl/ca.crt \
   --ca-key /etc/ssl/ca.key \
   --cn example.com \
@@ -252,7 +252,7 @@ Add another SAN? (y/n): n
 
 ### Example 3: High-Security Certificate
 ```bash
-./generate-certificate-v1.sh \
+./generate-certificate-v2.sh \
   --ca-cert /etc/ssl/ca.crt \
   --ca-key /etc/ssl/ca.key \
   --cn secure.example.com \
@@ -267,7 +267,7 @@ Add another SAN? (y/n): n
 
 ### Example 4: Generate Root CA Only
 ```bash
-./generate-certificate-v1.sh \
+./generate-certificate-v2.sh \
   --generate-ca \
   --cn "My Root CA" \
   --org "My Company" \
@@ -282,7 +282,7 @@ Add another SAN? (y/n): n
 ### Example 5: Complete One-Stop Solution
 ```bash
 # Generate CA and certificate in one command
-./generate-certificate-v1.sh \
+./generate-certificate-v2.sh \
   --generate-ca \
   --cn "My Root CA" \
   --org "My Company" \
@@ -300,7 +300,7 @@ Add another SAN? (y/n): n
 
 for subdomain in api app admin portal; do
     echo "Generating certificate for $subdomain.example.com"
-    ./generate-certificate-v1.sh \
+    ./generate-certificate-v2.sh \
       --ca-cert /etc/ssl/ca.crt \
       --ca-key /etc/ssl/ca.key \
       --cn "$subdomain.example.com" \
@@ -335,7 +335,7 @@ chmod 600 /path/to/ca.key
 openssl rsa -in encrypted_key.pem -out decrypted_key.pem
 
 # Then use the decrypted key
-./generate-certificate-v1.sh --ca-key decrypted_key.pem
+./generate-certificate-v2.sh --ca-key decrypted_key.pem
 ```
 
 #### 3. Invalid DNS Name Format
@@ -392,7 +392,7 @@ brew install openssl
 ### Debug Mode
 ```bash
 # Run with debug output
-bash -x ./generate-certificate-v1.sh
+bash -x ./generate-certificate-v2.sh
 
 # Check OpenSSL version
 openssl version
