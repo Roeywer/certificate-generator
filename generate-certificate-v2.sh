@@ -14,6 +14,8 @@ readonly DEFAULT_KEY_SIZE=2048
 readonly DEFAULT_VALIDITY_DAYS=365
 readonly MIN_KEY_SIZE=1024
 readonly MAX_VALIDITY_DAYS=3650
+readonly DEFAULT_CA_VALIDITY_DAYS=3650  # 10 years for root CA
+readonly DEFAULT_CA_KEY_SIZE=4096       # Higher security for CA
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -271,11 +273,16 @@ OPTIONS:
     --key-file FILE     Output key filename (default: certificate.key)
     --cert-file FILE    Output certificate filename (default: certificate.crt)
     --san SANS          Comma-separated list of Subject Alternative Names
+    --generate-ca       Generate root CA certificate and key (one-stop solution)
+    --ca-days DAYS      CA certificate validity in days (default: $DEFAULT_CA_VALIDITY_DAYS)
+    --ca-key-size SIZE  CA key size in bits (default: $DEFAULT_CA_KEY_SIZE)
 
 EXAMPLES:
     $SCRIPT_NAME
     $SCRIPT_NAME --ca-cert /path/to/ca.crt --ca-key /path/to/ca.key --cn example.com
     $SCRIPT_NAME --san "example.com,*.example.com,192.168.1.1"
+    $SCRIPT_NAME --generate-ca --cn "My Root CA" --org "My Company"
+    $SCRIPT_NAME --generate-ca --ca-days 7300 --ca-key-size 4096
 
 EOF
 }
@@ -357,6 +364,18 @@ parse_arguments() {
                 done
                 shift 2
                 ;;
+            --generate-ca)
+                generate_ca_flag="true"
+                shift
+                ;;
+            --ca-days)
+                ca_validity_days="$2"
+                shift 2
+                ;;
+            --ca-key-size)
+                ca_key_size="$2"
+                shift 2
+                ;;
             *)
                 log_error "Unknown option: $1"
                 show_usage
@@ -364,6 +383,143 @@ parse_arguments() {
                 ;;
         esac
     done
+}
+
+# Function to generate root CA certificate and key
+generate_root_ca() {
+    local ca_cert_path="$1"
+    local ca_key_path="$2"
+    local ca_common_name="${3:-Root CA}"
+    local ca_organization="${4:-}"
+    local ca_organizational_unit="${5:-}"
+    local ca_city="${6:-}"
+    local ca_state="${7:-}"
+    local ca_country="${8:-}"
+    local ca_validity_days="${9:-$DEFAULT_CA_VALIDITY_DAYS}"
+    local ca_key_size="${10:-$DEFAULT_CA_KEY_SIZE}"
+    
+    log_info "=== Root CA Generation ==="
+    echo
+    
+    # Get CA certificate details if not provided
+    if [[ -z "$ca_organization" ]]; then
+        get_input "Enter CA Organization (O)" ca_organization
+    fi
+    
+    if [[ -z "$ca_organizational_unit" ]]; then
+        get_input "Enter CA Organizational Unit (OU)" ca_organizational_unit
+    fi
+    
+    if [[ -z "$ca_city" ]]; then
+        get_input "Enter CA City/Locality (L)" ca_city
+    fi
+    
+    if [[ -z "$ca_state" ]]; then
+        get_input "Enter CA State/Province (ST)" ca_state
+    fi
+    
+    if [[ -z "$ca_country" ]]; then
+        get_input "Enter CA Country Code (C) - 2 letters" ca_country "validate_country_code"
+    else
+        validate_country_code "$ca_country" || exit 1
+    fi
+    
+    # Validate CA validity days
+    validate_validity_days "$ca_validity_days" || exit 1
+    
+    # Validate CA key size
+    validate_key_size "$ca_key_size" || exit 1
+    
+    # Check if output files already exist
+    if [[ -f "$ca_key_path" ]]; then
+        log_warning "CA private key file already exists: $ca_key_path"
+        read -p "Overwrite? (y/n): " overwrite_key
+        if [[ "$overwrite_key" != "y" && "$overwrite_key" != "Y" ]]; then
+            log_error "CA generation cancelled"
+            return 1
+        fi
+    fi
+    
+    if [[ -f "$ca_cert_path" ]]; then
+        log_warning "CA certificate file already exists: $ca_cert_path"
+        read -p "Overwrite? (y/n): " overwrite_cert
+        if [[ "$overwrite_cert" != "y" && "$overwrite_cert" != "Y" ]]; then
+            log_error "CA generation cancelled"
+            return 1
+        fi
+    fi
+    
+    # Create temporary directory for CA generation
+    local temp_dir=$(mktemp -d)
+    local ca_config_file="$temp_dir/ca_openssl.conf"
+    
+    # Create OpenSSL configuration file for CA
+    cat > "$ca_config_file" << EOF
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+prompt = no
+
+[req_distinguished_name]
+C=$ca_country
+ST=$ca_state
+L=$ca_city
+O=$ca_organization
+OU=$ca_organizational_unit
+CN=$ca_common_name
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer
+EOF
+    
+    log_info "Generating root CA private key ($ca_key_size bits)..."
+    if ! openssl genrsa -out "$ca_key_path" "$ca_key_size"; then
+        log_error "Failed to generate CA private key"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    log_info "Generating root CA certificate..."
+    if ! openssl req -new -x509 -key "$ca_key_path" -out "$ca_cert_path" -days "$ca_validity_days" -config "$ca_config_file" -extensions v3_ca; then
+        log_error "Failed to generate CA certificate"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    # Set secure file permissions
+    chmod 600 "$ca_key_path"
+    chmod 644 "$ca_cert_path"
+    
+    # Verify the generated CA certificate
+    log_info "Verifying generated CA certificate..."
+    if openssl x509 -in "$ca_cert_path" -text -noout > /dev/null 2>&1; then
+        log_success "Root CA generated successfully!"
+        echo
+        log_info "CA certificate details:"
+        openssl x509 -in "$ca_cert_path" -text -noout | grep -E "(Subject:|Issuer:|Not Before|Not After)"
+        echo
+        log_success "CA files created:"
+        log_success "  CA Private Key: $ca_key_path"
+        log_success "  CA Certificate: $ca_cert_path"
+        
+        # Show file permissions
+        log_info "File permissions:"
+        ls -la "$ca_key_path" "$ca_cert_path"
+    else
+        log_error "Failed to generate valid CA certificate"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    # Clean up temporary directory
+    rm -rf "$temp_dir"
+    
+    log_success "Root CA generation completed successfully!"
+    echo
+    return 0
 }
 
 # Main script
@@ -384,24 +540,116 @@ main() {
     local key_size="$DEFAULT_KEY_SIZE"
     local cert_key_file="certificate.key"
     local cert_file="certificate.crt"
+    local generate_ca_flag="false"
+    local ca_validity_days="$DEFAULT_CA_VALIDITY_DAYS"
+    local ca_key_size="$DEFAULT_CA_KEY_SIZE"
     san_entries_array=()
     
     # Parse command line arguments
     parse_arguments "$@"
     
-    # Get CA certificate path
-    if [[ -z "$ca_cert_path" ]]; then
-        get_input "Enter path to CA certificate file" ca_cert_path
+    # Handle CA generation or validation
+    if [[ "$generate_ca_flag" == "true" ]]; then
+        # Force CA generation mode
+        if [[ -z "$ca_cert_path" ]]; then
+            ca_cert_path="ca.crt"
+        fi
+        if [[ -z "$ca_key_path" ]]; then
+            ca_key_path="ca.key"
+        fi
+        
+        # Set defaults for CA generation if not provided via command line
+        if [[ -z "$common_name" ]]; then
+            common_name="Root CA"
+        fi
+        if [[ -z "$organization" ]]; then
+            organization="My Company"
+        fi
+        if [[ -z "$organizational_unit" ]]; then
+            organizational_unit="IT Department"
+        fi
+        if [[ -z "$city" ]]; then
+            city="New York"
+        fi
+        if [[ -z "$state" ]]; then
+            state="NY"
+        fi
+        if [[ -z "$country" ]]; then
+            country="US"
+        fi
+        
+        log_info "Generating root CA certificate and key..."
+        if ! generate_root_ca "$ca_cert_path" "$ca_key_path" "$common_name" "$organization" "$organizational_unit" "$city" "$state" "$country" "$ca_validity_days" "$ca_key_size"; then
+            log_error "Failed to generate root CA"
+            exit 1
+        fi
+        
+        log_success "Root CA generation completed successfully!"
+        log_info "You can now use the generated CA files to sign certificates:"
+        log_info "  CA Certificate: $ca_cert_path"
+        log_info "  CA Private Key: $ca_key_path"
+        exit 0
+    else
+        # Get CA certificate path
+        if [[ -z "$ca_cert_path" ]]; then
+            get_input "Enter path to CA certificate file" ca_cert_path
+        fi
+        
+        # Check if CA certificate exists, offer to generate if not
+        if [[ ! -f "$ca_cert_path" ]]; then
+            log_warning "CA certificate file not found: $ca_cert_path"
+            read -p "Would you like to generate a root CA certificate? (y/n): " generate_ca
+            if [[ "$generate_ca" == "y" || "$generate_ca" == "Y" ]]; then
+                # Set default CA key path if not provided
+                if [[ -z "$ca_key_path" ]]; then
+                    ca_key_path="${ca_cert_path%.*}.key"
+                fi
+                
+                log_info "Generating root CA certificate and key..."
+                if ! generate_root_ca "$ca_cert_path" "$ca_key_path" "$common_name" "$organization" "$organizational_unit" "$city" "$state" "$country" "$ca_validity_days" "$ca_key_size"; then
+                    log_error "Failed to generate root CA"
+                    exit 1
+                fi
+            else
+                log_error "CA certificate is required. Exiting."
+                exit 1
+            fi
+        else
+            # Validate existing CA certificate
+            validate_file "$ca_cert_path" "CA certificate" || exit 1
+            validate_certificate "$ca_cert_path" || exit 1
+        fi
+        
+        # Get CA private key path
+        if [[ -z "$ca_key_path" ]]; then
+            get_input "Enter path to CA private key file" ca_key_path
+        fi
+        
+        # Check if CA key exists, offer to generate if not
+        if [[ ! -f "$ca_key_path" ]]; then
+            log_warning "CA private key file not found: $ca_key_path"
+            read -p "Would you like to generate a root CA certificate and key? (y/n): " generate_ca
+            if [[ "$generate_ca" == "y" || "$generate_ca" == "Y" ]]; then
+                # Set default CA cert path if not provided
+                if [[ -z "$ca_cert_path" ]]; then
+                    ca_cert_path="${ca_key_path%.*}.crt"
+                fi
+                
+                log_info "Generating root CA certificate and key..."
+                if ! generate_root_ca "$ca_cert_path" "$ca_key_path" "$common_name" "$organization" "$organizational_unit" "$city" "$state" "$country" "$ca_validity_days" "$ca_key_size"; then
+                    log_error "Failed to generate root CA"
+                    exit 1
+                fi
+            else
+                log_error "CA private key is required. Exiting."
+                exit 1
+            fi
+        else
+            # Validate existing CA private key
+            validate_file "$ca_key_path" "CA private key" || exit 1
+            validate_private_key "$ca_key_path" || exit 1
+        fi
     fi
-    validate_file "$ca_cert_path" "CA certificate" || exit 1
-    validate_certificate "$ca_cert_path" || exit 1
-    
-    # Get CA private key path
-    if [[ -z "$ca_key_path" ]]; then
-        get_input "Enter path to CA private key file" ca_key_path
-    fi
-    validate_file "$ca_key_path" "CA private key" || exit 1
-    validate_private_key "$ca_key_path" || exit 1
     
     # Get certificate details
     echo
